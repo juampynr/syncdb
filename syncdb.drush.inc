@@ -200,8 +200,6 @@ function drush_syncdb_dumpdb() {
   $db_spec = _drush_sql_get_db_spec();
   $structure_tables_file = $tables_dir . 'structure.sql';
 
-  //drush_set_option('structure-tables-key', 'msnbc');
-
   $table_selection = drush_sql_get_expanded_table_selection($db_spec);
   // Build and run the MySQL command and check its results.
   $exec = _syncdb_build_structure_tables_cmd($db_spec, $table_selection['structure'], $structure_tables_file);
