@@ -54,7 +54,7 @@ can set this up in crontab:
 drush @example.dev ssh
 crontab -e
 # Paste the following command at the bottom of the opened file:
-30 2 * * * drush --root=/path/to/your/drupalroot --quiet dumpdb
+30 2 * * * drush --root=/path/to/your/drupalroot --quiet dumpdb --structure-tables-key=common
 
 Once this job is set up, run it once in the remote environment so it will export
 tables into, for example, /tmp/syncdb-tables. Now you can import these tables
