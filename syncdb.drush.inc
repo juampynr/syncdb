@@ -197,12 +197,30 @@ function drush_syncdb_dumpdb() {
   mkdir($tables_dir);
 
   // Extract structure tables into structure.sql.
-  $db_spec = _drush_sql_get_db_spec();
+  if (function_exists('_drush_sql_get_db_spec')) {
+    $db_spec = _drush_sql_get_db_spec();
+  }
+  else {
+    $sql = drush_sql_get_class();
+    $db_spec = $sql->db_spec();
+  }
   $structure_tables_file = $tables_dir . 'structure.sql';
 
-  $table_selection = drush_sql_get_expanded_table_selection($db_spec);
+  if (function_exists('drush_sql_get_expanded_table_selection')) {
+    $table_selection = drush_sql_get_expanded_table_selection($db_spec);
+  }
+  else {
+    $table_selection = $sql->get_expanded_table_selection();
+  }
   // Build and run the MySQL command and check its results.
-  $exec = _syncdb_build_structure_tables_cmd($db_spec, $table_selection['structure'], $structure_tables_file);
+  if (function_exists('_drush_sql_get_credentials')) {
+    $credentials = _drush_sql_get_credentials($db_spec);
+  }
+  else {
+    $credentials = $sql->creds(FALSE);
+  }
+  $credentials = str_replace('--database=', ' ', $credentials);
+  $exec = _syncdb_build_structure_tables_cmd($credentials, $table_selection['structure'], $structure_tables_file);
   if (!$return = drush_op_system($exec)) {
     drush_log(dt('Structure tables saved to !path', array('!path' => $structure_tables_file)), 'success');
     drush_backend_set_result($structure_tables_file);
@@ -212,14 +230,26 @@ function drush_syncdb_dumpdb() {
   }
 
   // Extract each table into a file.
-  $db_tables = _drush_sql_get_db_table_list($db_spec);
+  if (function_exists('_drush_sql_get_db_table_list')) {
+    $db_tables = _drush_sql_get_db_table_list($db_spec);
+  }
+  else {
+    $db_tables = $sql->listTables();
+  }
   $tables = array_diff($db_tables, $table_selection['structure']);
   $table_selection['skip'] = array();
   $table_selection['structure'] = array();
   foreach ($tables as $table) {
     $table_selection['tables'] = array($table);
     // Build and run the MySQL command and check its results.
-    list($exec, $file) = drush_sql_build_dump_command($table_selection, $db_spec, $tables_dir . $table . '.sql');
+    $file = $tables_dir . $table . '.sql';
+    if (function_exists('drush_sql_build_dump_command')) {
+      list($exec, $file) = drush_sql_build_dump_command($table_selection, $db_spec, $file);
+    }
+    else {
+      $exec = $sql->dumpCmd($table_selection);
+      $exec .= ' > ' . $file;
+    }
     if (!$return = drush_op_system($exec)) {
       drush_backend_set_result($file);
       drush_log(dt('Extracted table !path', array('!path' => $file)), 'success');
@@ -239,7 +269,7 @@ function drush_syncdb_dumpdb() {
  * drush_sql_build_dump_command() does not allow only structure tables to
  * be dumped so a custom implementation is needed.
  *
- * @param array $db_spec
+ * @param string $credentials
  *   The database credentials.
  * @param array $tables
  *   The array of structure tables.
@@ -248,9 +278,9 @@ function drush_syncdb_dumpdb() {
  * @return string
  *   A mysqldump statement that is ready for executing.
  */
-function _syncdb_build_structure_tables_cmd($db_spec, $tables, $file) {
+function _syncdb_build_structure_tables_cmd($credentials, $tables, $file) {
   $exec = 'mysqldump --result-file '. $file;
-  $extra = ' --no-autocommit --single-transaction --opt -Q' . str_replace('--database=', ' ', _drush_sql_get_credentials($db_spec));
+  $extra = ' --no-autocommit --single-transaction --opt -Q ' . $credentials;
   $exec .= " --no-data $extra " . implode(' ', $tables);
   return $exec;
 }
