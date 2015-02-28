@@ -33,6 +33,7 @@ function syncdb_drush_command() {
   );
 
   $items['dumpdb'] = array(
+    'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_FULL,
     'description' => 'Dumps a database into separate files within the temporary directory.',
     'examples' => array(
       'drush dumpdb' => 'Dumps the current site\'s database into separate files.',
@@ -189,7 +190,7 @@ function _syncdb_manual_import($local_dump_path, $tables) {
  */
 function drush_syncdb_dumpdb() {
   // Prepare directory to store database tables.
-  $local_temp_path = drush_find_tmp() . '/';
+  $local_temp_path = variable_get('file_temporary_path') . '/';
   $tables_dir = $local_temp_path . SYNCDB_TABLES_DIR . '/';
   if (is_dir($tables_dir)) {
     drush_delete_dir($tables_dir);
