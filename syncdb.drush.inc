@@ -7,9 +7,6 @@
  * can be made in several processes in parallel.
  */
 
-// Directory within $TMP to save and download database tables.
-define('SYNCDB_TABLES_DIR', 'syncdb-tables');
-
 /**
  * Implements hook_drush_command().
  */
@@ -23,28 +20,45 @@ function syncdb_drush_command() {
       'drush syncdb @example.dev' => 'Imports the database from the Development environment. Uses gnu-parallel if available.',
     ),
     'arguments' => array(
-      'Source alias' => 'Site alias referencing the source from which SQL tables will be downloaded.',
+      'source' => 'Site alias referencing the source from which SQL tables will be downloaded.',
     ),
     'required-arguments' => TRUE,
     'options' => array(
       'concurrency' => 'When gnu-parallel is not available, sets the max amount of tables to import in ' .
                        'parallel through drush_invoke_concurrent(). Defaults to 30.',
+      'source-dump-dir' => 'The source directory for the dump files.',
+      'local-dump-dir' => 'The local destination directory for the dump files.',
     ),
   );
 
   $items['dumpdb'] = array(
-    'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_FULL,
-    'description' => 'Dumps a database into separate files within the temporary directory.',
+    'bootstrap' => DRUSH_BOOTSTRAP_DRUSH,
+    'description' => 'Dumps a database into separate files into a directory.',
     'examples' => array(
       'drush dumpdb' => 'Dumps the current site\'s database into separate files.',
       'drush @example.dev dumpdb' => 'Dumps the Development environment\'s database into separate files.',
     ),
     'options' => array(
-      'structure-tables-key' => 'Array index of tables whoose data should be ignored ' .
-                                'such as cache* tables. See drush topic docs-configuration to find out ' .
-                                'where to define this array of tables. Note that if you are running ' .
-                                'this command in a remote site through a site alias, the structure-tables-key ' .
-                                'array must be available there.',
+      'skip-tables-key' => 'A key in the $skip_tables array. @see example.drushrc.php. Optional.',
+      'structure-tables-key' => 'A key in the $structure_tables array. @see example.drushrc.php. Optional.',
+      'tables-key' => 'A key in the $tables array. Optional.',
+      'skip-tables-list' => 'A comma-separated list of tables to exclude completely. Optional.',
+      'structure-tables-list' => 'A comma-separated list of tables to include for structure, but not data. Optional.',
+      'tables-list' => 'A comma-separated list of tables to transfer. Optional.',
+      'dump-dir' => 'The destination directory for the dump files. If not provided, a temporary directory will be used.',
+    ),
+  );
+
+  $items['importdb'] = array(
+    'bootstrap' => DRUSH_BOOTSTRAP_DRUSH,
+    'description' => 'Imports a database from separate dump files in a directory.',
+    'examples' => array(
+      'drush importdb' => 'Loads the current site\'s database from the current dump files.',
+      'drush @example.local importdb' => 'Loads the Development environment\'s database from the current dump files.',
+    ),
+    'options' => array(
+      'concurrency' => 'When gnu-parallel is not available, sets the max amount of tables to import in parallel through drush_invoke_concurrent(). Defaults to 30.',
+      'dump-dir' => 'The local directory that holds dump files. If not provided, the temporary directory will be used.',
     ),
   );
 
@@ -65,64 +79,45 @@ function syncdb_drush_command() {
  *   # Close the SSH connection.
  *   exit
  *   # Import tables into our local environment.
- *   drush @example.dev syncdb
+ *   drush @example.local syncdb @example.dev
  */
-function drush_syncdb($source_alias) {
-  // Find out the temporary directory of the source environment.
-  $return = drush_invoke_process($source_alias, 'variable-get', array('file_temporary_path'), array(
-    'format' => 'list',
-  ));
-  if ($return['error_status']) {
-    return drush_set_error('SYNCDB_SOURCE_TEMP', dt('Failed to obtain the temporary directory from the source alias.'));
-  }
-  $dev_dump_path = trim($return['output']) . '/' . SYNCDB_TABLES_DIR;
-  $local_temp_path = drush_find_tmp() . '/';
-  $local_dump_path = $local_temp_path . SYNCDB_TABLES_DIR;
+function drush_syncdb($source) {
+  drush_sql_bootstrap_further();
+
+  $source_settings = drush_sitealias_overlay_options(drush_sitealias_get_record($source), 'source-');
+  $local_settings = drush_sitealias_overlay_options(drush_sitealias_get_record('@self'), 'local-');
+
+  $source_dump_path = drush_syncdb_dump_dir($source_settings);
+  $local_dump_path = drush_syncdb_dump_dir($local_settings);
 
   // Delete old table files.
   if (is_dir($local_dump_path)) {
     drush_delete_dir($local_dump_path);
   }
-  mkdir($local_dump_path);
+  drush_mkdir($local_dump_path);
 
   // Download dump files to our local temporary directory.
-  $return = drush_invoke_process('@self', 'core-rsync', array($source_alias . ':' . $dev_dump_path, '@self:' . $local_temp_path), array(
+  // @todo If both of these aliases are not remote, then can we avoid the rsync?
+  drush_invoke_process('@self', 'core-rsync', array($source . ':' . $source_dump_path, '@self:' . $local_dump_path), array(
     'yes' => TRUE,
     'compress' => TRUE,
   ));
-  if ($return['error_status']) {
+  if (drush_get_error()) {
     return drush_set_error('SYNCDB_RSYNC', dt('Failed to download the database dump files to your local environment.'));
   }
 
   // Drop all the existing tables in the local environment.
-  $return = drush_invoke_process('@self', 'sql-drop', array(), array(
+  drush_invoke_process('@self', 'sql-drop', array(), array(
     'yes' => TRUE,
   ));
-  if ($return['error_status']) {
+  if (drush_get_error()) {
     return drush_set_error('SYNCDB_SQL_DROP', dt('Failed to drop existing tables in your local environment.'));
   }
 
-  // Build a list of the files to import.
-  $tables = array();
-  foreach (new DirectoryIterator($local_dump_path) as $fileInfo) {
-    if (!$fileInfo->isDot()) {
-      $tables[] = $fileInfo->getFilename();
-    }
-  }
-
-  // Decide on how to import SQL files.
-  $has_parallel = drush_shell_exec('parallel --version');
-  if ($has_parallel) {
-    // Woot! GNU-parallel is available.
-    _syncdb_parallel_import($local_dump_path, $tables);
-  }
-  else {
-    // Manual import. Still faster than sql-sync.
-    drush_log(dt('Importing tables manually. This is still faster than sql-sync but for ludicrous speed install http://www.gnu.org/software/parallel', 'info'), 'status');
-    _syncdb_manual_import($local_dump_path, $tables);
-  };
-
-  drush_log(dt('Finished importing the database.'), 'success');
+  drush_invoke_process('@self', 'importdb', array(), array(
+    'dump-dir' => $local_dump_path,
+    'concurrency' => drush_get_option('concurrency', 30),
+  ));
 }
 
 /**
@@ -181,6 +176,42 @@ function _syncdb_manual_import($local_dump_path, $tables) {
 }
 
 /**
+ * Command callback for drush importdb.
+ */
+function drush_syncdb_importdb() {
+  drush_sql_bootstrap_further();
+
+  // Prepare directory to store database tables.
+  $local_settings = drush_sitealias_overlay_options(drush_sitealias_get_record('@self'), '');
+  $local_dump_path = drush_syncdb_dump_dir($local_settings);
+  if (!is_dir($local_dump_path)) {
+    return drush_set_error('SYNCDB_MISSING_DIRECTORY', dt("Drectory $local_dump_path does not exist."));
+  }
+
+  // Build a list of the files to import.
+  $tables = array();
+  foreach (new DirectoryIterator($local_dump_path) as $fileInfo) {
+    if (!$fileInfo->isDot()) {
+      $tables[] = $fileInfo->getFilename();
+    }
+  }
+
+  // Decide on how to import SQL files.
+  $has_parallel = drush_shell_exec('parallel --version');
+  if ($has_parallel) {
+    // Woot! GNU-parallel is available.
+    _syncdb_parallel_import($local_dump_path, $tables);
+  }
+  else {
+    // Manual import. Still faster than sql-sync.
+    drush_log(dt('Importing tables manually. This is still faster than sql-sync but for ludicrous speed install http://www.gnu.org/software/parallel', 'info'), 'status');
+    _syncdb_manual_import($local_dump_path, $tables);
+  };
+
+  drush_log(dt('Finished importing the database.'), 'success');
+}
+
+/**
  * Implements drush_hook_command().
  *
  * Command callback for dumpdb.
@@ -189,13 +220,15 @@ function _syncdb_manual_import($local_dump_path, $tables) {
  * directory. Structure tables are put into structure.sql.
  */
 function drush_syncdb_dumpdb() {
+  drush_sql_bootstrap_further();
+
   // Prepare directory to store database tables.
-  $local_temp_path = variable_get('file_temporary_path') . '/';
-  $tables_dir = $local_temp_path . SYNCDB_TABLES_DIR . '/';
+  $local_settings = drush_sitealias_get_record('@self');
+  $tables_dir = drush_syncdb_dump_dir($local_settings);
   if (is_dir($tables_dir)) {
     drush_delete_dir($tables_dir);
   }
-  mkdir($tables_dir);
+  drush_mkdir($tables_dir);
 
   // Extract structure tables into structure.sql.
   if (function_exists('_drush_sql_get_db_spec')) {
@@ -205,7 +238,6 @@ function drush_syncdb_dumpdb() {
     $sql = drush_sql_get_class();
     $db_spec = $sql->db_spec();
   }
-  $structure_tables_file = $tables_dir . 'structure.sql';
 
   if (function_exists('drush_sql_get_expanded_table_selection')) {
     $table_selection = drush_sql_get_expanded_table_selection($db_spec);
@@ -213,52 +245,61 @@ function drush_syncdb_dumpdb() {
   else {
     $table_selection = $sql->get_expanded_table_selection();
   }
+
+  if (empty($table_selection['tables'])) {
+    if (function_exists('_drush_sql_get_db_table_list')) {
+      $db_tables = _drush_sql_get_db_table_list($db_spec);
+    }
+    else {
+      $db_tables = $sql->listTables();
+    }
+    $table_selection['tables'] = array_diff($db_tables, $table_selection['structure'], $table_selection['skip']);
+  }
+
   // Build and run the MySQL command and check its results.
-  if (function_exists('_drush_sql_get_credentials')) {
-    $credentials = _drush_sql_get_credentials($db_spec);
-  }
-  else {
-    $credentials = $sql->creds(FALSE);
-  }
-  $credentials = str_replace('--database=', ' ', $credentials);
-  $exec = _syncdb_build_structure_tables_cmd($credentials, $table_selection['structure'], $structure_tables_file);
-  if (!$return = drush_op_system($exec)) {
-    drush_log(dt('Structure tables saved to !path', array('!path' => $structure_tables_file)), 'success');
-    drush_backend_set_result($structure_tables_file);
-  }
-  else {
-    return drush_set_error('SYNCDB_STRUCTURE_DUMP_FAIL', dt('Failed to dump structure tables.'));
+  if (!empty($table_selection['structure'])) {
+    $structure_tables_file = $tables_dir . '/structure.sql';
+    if (function_exists('_drush_sql_get_credentials')) {
+      $credentials = _drush_sql_get_credentials($db_spec);
+    }
+    else {
+      $credentials = $sql->creds(FALSE);
+    }
+    $credentials = str_replace('--database=', ' ', $credentials);
+    $exec = _syncdb_build_structure_tables_cmd($db_spec['driver'], $credentials, $table_selection['structure'], $structure_tables_file);
+    if (!$exec) {
+      return drush_set_error('SYNCDB_UNSPPORTED_DRIVER', dt('The dumpdb command does not support the @driver database driver', array('@driver' => $db_spec['driver'])));
+    }
+    if (!$return = drush_op_system($exec)) {
+      drush_log(dt('Exctracted structure tables to !path', array('!path' => $structure_tables_file)), 'success');
+      drush_backend_set_result($structure_tables_file);
+    }
+    else {
+      return drush_set_error('SYNCDB_STRUCTURE_DUMP_FAIL', dt('Failed to dump structure tables.'));
+    }
   }
 
   // Extract each table into a file.
-  if (function_exists('_drush_sql_get_db_table_list')) {
-    $db_tables = _drush_sql_get_db_table_list($db_spec);
-  }
-  else {
-    $db_tables = $sql->listTables();
-  }
-  $tables = array_diff($db_tables, $table_selection['structure']);
-  $table_selection['skip'] = array();
-  $table_selection['structure'] = array();
-  foreach ($tables as $table) {
-    $table_selection['tables'] = array($table);
+  foreach ($table_selection['tables'] as $table) {
+    $file_table_selection = array('tables' => array($table), 'skip' => array(), 'structure' => array());
     // Build and run the MySQL command and check its results.
-    $file = $tables_dir . $table . '.sql';
+    $file = $tables_dir . '/' . $table . '.sql';
     if (function_exists('drush_sql_build_dump_command')) {
-      list($exec, $file) = drush_sql_build_dump_command($table_selection, $db_spec, $file);
+      list($exec, $file) = drush_sql_build_dump_command($file_table_selection, $db_spec, $file);
     }
     else {
-      $exec = $sql->dumpCmd($table_selection);
+      $exec = $sql->dumpCmd($file_table_selection);
       $exec .= ' > ' . $file;
     }
     if (!$return = drush_op_system($exec)) {
       drush_backend_set_result($file);
-      drush_log(dt('Extracted table !path', array('!path' => $file)), 'success');
+      drush_log(dt('Extracted table to !path', array('!path' => $file)), 'success');
     }
     else {
       return drush_set_error('SYNCDB_TABLE_DUMP_FAIL', dt('Failed to dump table !path.', array('!path' => $file)));
     }
   }
+
   drush_log(dt('Finished exporting tables.'), 'success');
 }
 
@@ -279,9 +320,60 @@ function drush_syncdb_dumpdb() {
  * @return string
  *   A mysqldump statement that is ready for executing.
  */
-function _syncdb_build_structure_tables_cmd($credentials, $tables, $file) {
-  $exec = 'mysqldump --result-file '. $file;
-  $extra = ' --no-autocommit --single-transaction --opt -Q ' . $credentials;
-  $exec .= " --no-data $extra " . implode(' ', $tables);
-  return $exec;
+function _syncdb_build_structure_tables_cmd($driver, $credentials, $tables, $file) {
+  switch ($driver) {
+    case 'mysqli':
+    case 'mysql':
+      $exec = 'mysqldump --result-file ' . $file;
+      $exec .= ' --no-autocommit --single-transaction --opt -Q ' . $credentials;
+      $exec .= " --no-data " . implode(' ', $tables);
+      return $exec;
+    case 'pgsql':
+      $exec = 'pg_dump --file ' . $file;
+      $exec .= str_replace('--dbname=', ' ', $credentials);
+      $exec .= " --clean --schema-only " . implode(' ', $tables);
+      return $exec;
+  }
+}
+
+function drush_syncdb_dump_dir($site_record) {
+  $databases = sitealias_get_databases_from_record($site_record);
+  if (isset($databases)) {
+    $db_spec = $databases['default']['default'];
+    // Make a base filename pattern to use to name the dump file
+    $filename_pattern = $db_spec['database'];
+    if (isset($db_spec['remote-host'])) {
+      $filename_pattern = $db_spec['remote-host'] . '_' . $filename_pattern;
+    }
+  }
+  // If the user has set the --dump-dir option, then
+  // store persistant sql dump files there.
+  $dump_dir = drush_sitealias_get_path_option($site_record, 'dump-dir');
+  $remote = isset($site_record['remote-host']);
+  // If this is a remote site, try to find a writable tmpdir.
+  if (empty($dump_dir) && $remote) {
+    // If the alias is remote, we'll add on the 'sql' suffix.
+    // As mentioned in drush_tempnam, providing a suffix removes
+    // the guarentee of tempnam to return a unique filename;
+    // however, when the file is going to be used on a remote
+    // system, there is no such guarentee anyway, so we might
+    // as well include it.
+    $remote_site = $site_record;
+    unset($remote_site['root']);
+    unset($remote_site['uri']);
+    $result = drush_invoke_process($site_record, 'php-eval', array('return drush_find_tmp();'), array(), array('integrate' => FALSE, 'override-simulated' => TRUE));
+    // If the call to invoke process does not work for some reason
+    // (e.g. drush not installed on the target machine),
+    // then we will just presume that the tmp dir is '/tmp'.
+    if (!$result || !empty($result['error_status']) || empty($result['object'])) {
+      $dump_dir = '/tmp/syncdb/' . $filename_pattern;
+    }
+    else {
+      $dump_dir = $result['object'] . '/syncdb/' . $filename_pattern;
+    }
+  }
+  elseif (empty($dump_dir)) {
+    $dump_dir = drush_find_tmp() . '/syncdb/' . $filename_pattern;
+  }
+  return $dump_dir;
 }
