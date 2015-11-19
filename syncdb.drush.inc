@@ -185,7 +185,7 @@ function drush_syncdb_importdb() {
   $local_settings = drush_sitealias_overlay_options(drush_sitealias_get_record('@self'), '');
   $local_dump_path = drush_syncdb_dump_dir($local_settings);
   if (!is_dir($local_dump_path)) {
-    return drush_set_error('SYNCDB_MISSING_DIRECTORY', dt("Drectory $local_dump_path does not exist."));
+    return drush_set_error('SYNCDB_MISSING_DIRECTORY', dt("Directory $local_dump_path does not exist."));
   }
 
   // Build a list of the files to import.
@@ -271,7 +271,7 @@ function drush_syncdb_dumpdb() {
       return drush_set_error('SYNCDB_UNSPPORTED_DRIVER', dt('The dumpdb command does not support the @driver database driver', array('@driver' => $db_spec['driver'])));
     }
     if (!$return = drush_op_system($exec)) {
-      drush_log(dt('Exctracted structure tables to !path', array('!path' => $structure_tables_file)), 'success');
+      drush_log(dt('Extracted structure tables to !path', array('!path' => $structure_tables_file)), 'success');
       drush_backend_set_result($structure_tables_file);
     }
     else {
