@@ -46,6 +46,7 @@ function syncdb_drush_command() {
       'structure-tables-list' => 'A comma-separated list of tables to include for structure, but not data. Optional.',
       'tables-list' => 'A comma-separated list of tables to transfer. Optional.',
       'dump-dir' => 'The destination directory for the dump files. If not provided, a temporary directory will be used.',
+      'db-url' => 'Database specification for system to dump from.'
     ),
   );
 
