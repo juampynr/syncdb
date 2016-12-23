@@ -1,7 +1,15 @@
-This project implements two Drush commands to export and import large
-databases. By splitting tables into separate files and importing them
-afterwards in parallel we can reduce the overall processing time
-considerably.
+This project implements <a href="https://www.lullabot.com/articles/importing-huge-databases-faster" title="Lullabot article">two Drush commands
+to export and import large databases faster</a>. It does it by splitting tables
+into separate files and importing them afterwards in parallel.
+
+Here is a description of each command:
+
+  * `drush dumpdb` dumps database tables into the temporary directory of
+  the current environment.
+  * `drush syncdb @example.dev` downloads sql files from `@example.dev` and
+  installs them in the current environment.
+  * `drush importdb --dump-dir=/foo/bar` imports all `*.sql` files from
+  `/foo/bar` using the same method as `syncdb`.
 
 There is no .module nor .info files because this is not a module. It is a Drush
 command. Drush can find commands in certain directories such as `$HOME/.drush/`
@@ -69,6 +77,17 @@ called `structure.sql`.
 If you install `parallel`, have a look at is options by reading the contents of the
 command `man parallel`. There could be ways for you to optimize the command even
 further.
+
+#Usage examples
+Here are a few screenshots of a terminal session using these two commands:
+
+![drush dumpdb](/screenshots/Selection_001.jpg?raw=true "Dumping database")
+
+![drush dumpdb 2](/screenshots/Selection_002.jpg?raw=true "Dumping database (part 2)")
+
+![drush syncdb](/screenshots/Selection_003.jpg?raw=true "Importing database")
+
+![drush syncdb 2](/screenshots/Selection_004.jpg?raw=true "Importing database (part 2)")
 
 #Acknowledgements
 
