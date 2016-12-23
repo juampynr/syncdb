@@ -1,5 +1,5 @@
 This project implements <a href="https://www.lullabot.com/articles/importing-huge-databases-faster" title="Lullabot article">two Drush commands
-to export and import large databases faster</a>. It does it by splitting tables
+to export and import large Drupal 7 or 8 databases faster</a>. It does it by splitting tables
 into separate files and importing them afterwards in parallel.
 
 Here is a description of each command:
@@ -21,7 +21,7 @@ versioned code.
 #Requirements
 
 * Drush: version 6 or higher.
-* Drupal 7 and Drupal 8.
+* Drupal 7 or Drupal 8.
 * Database: it has been tested just on MySQL.
 
 It highly recommended that you install [GNU-parallel](http://www.gnu.org/software/parallel)
