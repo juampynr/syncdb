@@ -1,0 +1,7 @@
+{
+  "name": "juampynr/syncdb",
+  "description": "Import and export large Drupal databases faster using Drush.",
+  "homepage": "https://github.com/juampynr/syncdb",
+  "license": "GPL-2.0+",
+  "type": "drupal-drush"
+}
