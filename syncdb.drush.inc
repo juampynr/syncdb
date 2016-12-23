@@ -24,8 +24,7 @@ function syncdb_drush_command() {
     ),
     'required-arguments' => TRUE,
     'options' => array(
-      'concurrency' => 'When gnu-parallel is not available, sets the max amount of tables to import in ' .
-                       'parallel through drush_invoke_concurrent(). Defaults to 30.',
+      'concurrency' => 'When gnu-parallel is not available, sets the max amount of tables to import in parallel through drush_invoke_concurrent(). Defaults to 30.',
       'source-dump-dir' => 'The source directory for the dump files.',
       'local-dump-dir' => 'The local destination directory for the dump files.',
     ),
@@ -60,6 +59,10 @@ function syncdb_drush_command() {
     'options' => array(
       'concurrency' => 'When gnu-parallel is not available, sets the max amount of tables to import in parallel through drush_invoke_concurrent(). Defaults to 30.',
       'dump-dir' => 'The local directory that holds dump files. If not provided, the temporary directory will be used.',
+      'database' => array(
+        'description' => 'The DB connection key if using multiple connections in settings.php.',
+        'example-value' => 'key',
+      ),
     ),
   );
 
@@ -130,7 +133,8 @@ function drush_syncdb($source) {
  *   List of table names within the path.
  */
 function _syncdb_parallel_import($local_dump_path) {
-  drush_op_system("find " . $local_dump_path . " -name '*sql' | parallel --use-cpus-instead-of-cores --jobs 200% -v drush sql-query --file={}");
+  $db = drush_get_option('database');
+  drush_op_system("find " . $local_dump_path . " -name '*sql' | parallel --use-cpus-instead-of-cores --jobs 200% -v drush sql-query --database=$db --file={}");
 }
 
 /**
@@ -152,6 +156,7 @@ function _syncdb_manual_import($local_dump_path, $tables) {
         'command' => 'sql-query',
         'options' => array(
           'file' => $local_dump_path . '/' . $table,
+          'database' => drush_get_option('database'),
         ),
       );
     }
@@ -192,7 +197,7 @@ function drush_syncdb_importdb() {
   // Build a list of the files to import.
   $tables = array();
   foreach (new DirectoryIterator($local_dump_path) as $fileInfo) {
-    if (!$fileInfo->isDot()) {
+    if (!$fileInfo->isDot() && strpos($fileInfo->getBasename(), '.') !== (int) 0) {
       $tables[] = $fileInfo->getFilename();
     }
   }
