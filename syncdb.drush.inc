@@ -133,8 +133,8 @@ function drush_syncdb($source) {
  *   List of table names within the path.
  */
 function _syncdb_parallel_import($local_dump_path) {
-  $cmd = drush_find_drush(). ' '. _drush_backend_generate_command([], 'sql-query', [], drush_redispatch_get_options() + ['strict' => 0]);
-  drush_op_system("find " . $local_dump_path . " -name '*sql' | parallel --use-cpus-instead-of-cores --jobs 200% -v $cmd --file={}");
+  $db = drush_get_option('database');
+  drush_op_system("find " . $local_dump_path . " -name '*sql' | parallel --use-cpus-instead-of-cores --jobs 200% -v drush sql-query --database=$db --file={}");
 }
 
 /**
@@ -154,9 +154,10 @@ function _syncdb_manual_import($local_dump_path, $tables) {
       $invocations[] = array(
         'site' => '@self',
         'command' => 'sql-query',
-        'options' => drush_redispatch_get_options() + ['strict' => 0] + array(
-            'file' => $local_dump_path . '/' . $table,
-          ),
+        'options' => array(
+          'file' => $local_dump_path . '/' . $table,
+          'database' => drush_get_option('database'),
+        ),
       );
     }
     $common_options = array();
@@ -209,7 +210,7 @@ function drush_syncdb_importdb() {
   }
   else {
     // Manual import. Still faster than sql-sync.
-    drush_log(dt('Importing tables manually. This is still faster than sql-sync but for ludicrous speed install http://www.gnu.org/software/parallel', 'info'));
+    drush_log(dt('Importing tables manually. This is still faster than sql-sync but for ludicrous speed install http://www.gnu.org/software/parallel', 'info'), 'status');
     _syncdb_manual_import($local_dump_path, $tables);
   };
 
