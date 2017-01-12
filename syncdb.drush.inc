@@ -133,7 +133,7 @@ function drush_syncdb($source) {
  *   List of table names within the path.
  */
 function _syncdb_parallel_import($local_dump_path) {
-  $cmd = _drush_backend_generate_command([], 'sql-query', [], drush_redispatch_get_options() + ['strict' => FALSE]);
+  $cmd = _drush_backend_generate_command([], 'sql-query', [], drush_redispatch_get_options() + ['strict' => 0]);
   drush_op_system("find " . $local_dump_path . " -name '*sql' | parallel --use-cpus-instead-of-cores --jobs 200% -v $cmd --file={}");
 }
 
@@ -154,7 +154,7 @@ function _syncdb_manual_import($local_dump_path, $tables) {
       $invocations[] = array(
         'site' => '@self',
         'command' => 'sql-query',
-        'options' => drush_redispatch_get_options() + ['strict' => FALSE] + array(
+        'options' => drush_redispatch_get_options() + ['strict' => 0] + array(
             'file' => $local_dump_path . '/' . $table,
           ),
       );
