@@ -1,6 +1,7 @@
-This project implements <a href="https://www.lullabot.com/articles/importing-huge-databases-faster" title="Lullabot article">two Drush commands
-to export and import large Drupal 7 or 8 databases faster</a>. It does it by splitting tables
-into separate files and importing them afterwards in parallel.
+# Drush syncdb plugin
+
+This project implements <a href="https://www.lullabot.com/articles/importing-huge-databases-faster" title="Lullabot article">two Drush commands to export and import large Drupal 7 or 8 databases faster</a>. 
+It does it by splitting tables into separate files and importing them afterwards in parallel.
 
 Here is a description of each command:
 
@@ -18,7 +19,7 @@ places where this project can be placed so Drush can discover it. Depending on
 your needs you may decide to leave this command with or without your project's
 versioned code.
 
-#Requirements
+## Requirements
 
 * Drush: version 6 or higher.
 * Drupal 7 or Drupal 8.
@@ -30,7 +31,7 @@ in the machine(s) that contain the data that you want to import. On Ubuntu, run
 a hard requirement, though. `drush syncdb` will still be able to import tables
 witout GNU-parallel, but it will take longer to complete.
 
-#Installation
+## Installation
 
 Go to your project's root directory and run the following command:
 
@@ -46,7 +47,7 @@ Next, log into the remote server which will server as the source from which
 the team will download tables into their local environments. Install the command
 there.
 
-#Usage
+## Usage
 
 You should set up a periodic job that runs `drush dumpdb` at the remote environment
 that is designated as the source. This would normally be the Development
@@ -68,7 +69,7 @@ into your local environment with the following command:
 drush syncdb @example.dev
 ```
 
-#Customizing the command
+## Customizing the command
 
 You can use the `--structure-tables-key` option in the same way it works for the
 `sql-sync` command. This option will export structure tables into a file
@@ -78,7 +79,7 @@ If you install `parallel`, have a look at is options by reading the contents of 
 command `man parallel`. There could be ways for you to optimize the command even
 further.
 
-#Usage examples
+## Usage examples
 Here are a few screenshots of a terminal session using these two commands:
 
 ![drush dumpdb](/screenshots/Selection_001.jpg?raw=true "Dumping database")
@@ -89,7 +90,7 @@ Here are a few screenshots of a terminal session using these two commands:
 
 ![drush syncdb 2](/screenshots/Selection_004.jpg?raw=true "Importing database (part 2)")
 
-#Acknowledgements
+## Acknowledgements
 
 * Andrew Berry ([@deviantintegral](https://twitter.com/deviantintegral)) for
   creating [MySQL Parallel](https://github.com/deviantintegral/mysql-parallel)
