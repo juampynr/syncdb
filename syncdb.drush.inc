@@ -31,7 +31,8 @@ function syncdb_drush_command() {
   );
 
   $items['dumpdb'] = array(
-    'bootstrap' => DRUSH_BOOTSTRAP_DRUSH,
+    // Database::getConnectionInfo needs higher bootstrap level
+    'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_CONFIGURATION,
     'description' => 'Dumps a database into separate files into a directory.',
     'examples' => array(
       'drush dumpdb' => 'Dumps the current site\'s database into separate files.',
