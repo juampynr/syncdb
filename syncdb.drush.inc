@@ -103,7 +103,7 @@ function drush_syncdb($source) {
 
   // Download dump files to our local temporary directory.
   // @todo If both of these aliases are not remote, then can we avoid the rsync?
-  drush_invoke_process('@self', 'core-rsync', array($source . ':' . $source_dump_path, '@self:' . $local_dump_path), array(
+  drush_invoke_process('@self', 'core-rsync', array($source . ':' . $source_dump_path . '/', '@self:' . $local_dump_path), array(
     'yes' => TRUE,
     'compress' => TRUE,
   ));
